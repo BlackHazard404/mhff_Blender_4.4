@@ -17,7 +17,7 @@ bl_info= {
     "name": "Import MH4U Models",
     "author": "Seth VanHeulen",
     "version": (1, 0),
-    "blender": (2, 74, 0),
+    "blender": (4, 4, 0),
     "location": "File > Import > Monster Hunter 4 Ultimate Model (.mod)",
     "description": "Imports a Monster Hunter 4 Ultimate model.",
     "category": "Import-Export",
@@ -102,7 +102,7 @@ def decode_etc1(image, data):
         block_index += 1
     image.pixels = image_pixels
     image.update()
-    image.pack(True)
+    image.pack() #had True inside the brackets, in Blender 4.4 it throws an error, so I just omitted it and works fine
 
 
 def load_tex(filename, name):
@@ -123,7 +123,7 @@ def load_tex(filename, name):
         image = bpy.data.images.new('texture', width, height)
         decode_etc1(image, tex.read(width*height//2))
     elif pixel_type == 12:
-        image = bpy.data.images.new('texture', width, height, True)
+        image = bpy.data.images.new('texture', width, height, alpha=True) #specified alpha since compiler asked for it
         decode_etc1(image, tex.read(width*height))
     tex.close()
 
@@ -164,7 +164,8 @@ def parse_faces(vertex_start_index, raw_faces):
 
 
 def build_uv_map(b_mesh, uvs, faces):
-    b_mesh.uv_textures.new()
+    #b_mesh.uv_textures.new() This is now renamed to uv_layers in Blender 4.4 's API
+    b_mesh.uv_layers.new()
     for i,loop in enumerate(b_mesh.loops):
         b_mesh.uv_layers[0].data[i].uv = uvs[loop.vertex_index]
 
@@ -192,23 +193,29 @@ def load_mod(filename, context):
         b_object = bpy.data.objects.new('imported_object_{}'.format(i), b_mesh)
         b_mesh.from_pydata(vertices, [], faces)
         b_mesh.update(calc_edges=True)
-        bpy.context.scene.objects.link(b_object)
+        #bpy.context.scene.objects.link(b_object) 
+        #this now looks like this:
+        bpy.context.collection.objects.link(b_object)
         if len(uvs) != 0:
             build_uv_map(b_mesh, uvs, faces)
     mod.close()
 
-
-class IMPORT_OT_mod(bpy.types.Operator):
+from bpy_extras.io_utils import ImportHelper #needed to get the filepath correctly in Blender 4.4
+class IMPORT_OT_mod(bpy.types.Operator, ImportHelper):
     bl_idname = "import_scene.mod"
     bl_label = "Import MOD"
     bl_description = "Import a Moster Hunter 4 Ultimate model"
     bl_options = {'REGISTER', 'UNDO'}
 
-    filepath = bpy.props.StringProperty(name="File Path", description="Filepath used for importing the MOD file", maxlen=1024, default="")
+    #filepath = bpy.props.StringProperty(name="File Path", description="Filepath used for importing the MOD file", maxlen=1024, default="") 
+    #In Blender 4.4, this line of code later throws an error, saying that it's _PropertyDeferred and not string. Since it wasn't used anywhere else in the scope, I moved the variable in the execute function
 
     def execute(self, context):
+        filepath = self.properties.filepath
         load_mod(self.filepath, context)
-        load_tex(self.filepath.replace('.58A15856', '_BM.241F5DEB'), 'test')
+        #load_tex(self.filepath.replace('.58A15856', '_BM.241F5DEB'), 'test') 
+        #This line of code doesn't look like to load the files in the directory, maybe because I used a different arc unzipper? Should look into svan's arc.py file
+        load_tex(self.filepath.replace('.mod', '_01_BM.tex'), 'test') #for now, loads only one texture. I'll add later iterators and stuff
         return {'FINISHED'}
 
     def invoke(self, context, event):
@@ -220,15 +227,28 @@ class IMPORT_OT_mod(bpy.types.Operator):
 def menu_func(self, context):
     self.layout.operator(IMPORT_OT_mod.bl_idname, text="Monster Hunter 4 Ultimate Model (.mod)")
 
+classes = (
+    IMPORT_OT_mod,
+)
 
 def register():
-    bpy.utils.register_module(__name__)
-    bpy.types.INFO_MT_file_import.append(menu_func)
+    #Register modules don't exist anymore in Blender 4.4 API
+    #bpy.utils.register_module(__name__)
+    #This function is now called TOPBAR
+    #bpy.types.INFO_MT_file_import.append(menu_func)
+    bpy.types.TOPBAR_MT_file_import.append(menu_func)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)
 
 
 def unregister():
-    bpy.utils.unregister_module(__name__)
-    bpy.types.INFO_MT_file_import.remove(menu_func)
+    #bpy.utils.unregister_module(__name__)
+    #bpy.types.INFO_MT_file_import.remove(menu_func)
+    bpy.types.TOPBAR_MT_file_import.remove(menu_func)
+    from bpy.utils import unregister_class
+    for cls in classes:
+        unregister_class(cls)
 
 
 if __name__ == "__main__":
