@@ -1,5 +1,10 @@
+THIS IS ALL SVAN'S WORK, I just forked it and am messing with it so that it can work on Blender 4.4 without having to install old releases.
+(http://github.com/svanheulen/mhff)
+
 These scripts are for Monster Hunter games on the 3DS.
 
 The arc.py script can be used to extract ARC files found in the RomFS.
 
 The tex.py script can be used to convert TEX files to an image.
+
+The io_import_scene_mod.py script can be used to convert .MOD files into .blend files, and bring also .tex files into the editor. I'll also add the chance to automatically assing materials with textures later.
