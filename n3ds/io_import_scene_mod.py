@@ -200,6 +200,21 @@ def load_mod(filename, context):
             build_uv_map(b_mesh, uvs, faces)
     mod.close()
 
+#calls load_tex on all .tex files that are in the directory
+def multitex_loader(filepath):
+    from pathlib import Path
+    #checks for textures in the folder
+    for i in range(4):
+        my_file = Path(filepath.replace('.mod', ('_0' + str(i) + '_BM.tex')))
+        if my_file.is_file():
+            load_tex(filepath.replace('.mod', ('_0' + str(i) + '_BM.tex')), 'test')
+    #checks for normals in the folder
+    for i in range(4):
+        my_file = Path(filepath.replace('.mod', ('_0' + str(i) + '_NM_MIRROR.tex')))
+        if my_file.is_file():
+            load_tex(filepath.replace('.mod', ('_0' + str(i) + '_NM_MIRROR.tex')), 'test')
+    
+    
 from bpy_extras.io_utils import ImportHelper #needed to get the filepath correctly in Blender 4.4
 class IMPORT_OT_mod(bpy.types.Operator, ImportHelper):
     bl_idname = "import_scene.mod"
@@ -215,7 +230,8 @@ class IMPORT_OT_mod(bpy.types.Operator, ImportHelper):
         load_mod(self.filepath, context)
         #load_tex(self.filepath.replace('.58A15856', '_BM.241F5DEB'), 'test') 
         #This line of code doesn't look like to load the files in the directory, maybe because I used a different arc unzipper? Should look into svan's arc.py file
-        load_tex(self.filepath.replace('.mod', '_01_BM.tex'), 'test') #for now, loads only one texture. I'll add later iterators and stuff
+        #I've made a little function that checks for all textures in the folder and loads them in the editor
+        multitex_loader(self.filepath)
         return {'FINISHED'}
 
     def invoke(self, context, event):
