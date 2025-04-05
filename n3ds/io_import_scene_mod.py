@@ -170,12 +170,14 @@ def build_uv_map(b_mesh, uvs, faces):
         b_mesh.uv_layers[0].data[i].uv = uvs[loop.vertex_index]
 
 
-def load_mod(filename, context):
+def load_mod(filename, context, material_to_apply):
     mod = open(filename, 'rb')
     mod_header = struct.unpack('4s4H13I', mod.read(64))
     if mod_header[0] != b'MOD\x00' or mod_header[1] != 0xe6:
         mod.close()
         return
+    parentObject = bpy.data.objects.new(filename[(filename.rfind("\\") + 1):], None )
+    bpy.context.collection.objects.link(parentObject)
     for i in range(mod_header[3]):
         mod.seek(mod_header[15] + i * 48)
         mesh_info = struct.unpack('HHIHBB9I', mod.read(48))
@@ -193,9 +195,12 @@ def load_mod(filename, context):
         b_object = bpy.data.objects.new('imported_object_{}'.format(i), b_mesh)
         b_mesh.from_pydata(vertices, [], faces)
         b_mesh.update(calc_edges=True)
+        b_object.data.materials.append(material_to_apply)
+        b_object.active_material_index = len(b_object.data.materials) - 1
         #bpy.context.scene.objects.link(b_object) 
         #this now looks like this:
         bpy.context.collection.objects.link(b_object)
+        b_object.parent = parentObject
         if len(uvs) != 0:
             build_uv_map(b_mesh, uvs, faces)
     mod.close()
@@ -213,8 +218,18 @@ def multitex_loader(filepath):
         my_file = Path(filepath.replace('.mod', ('_0' + str(i) + '_NM_MIRROR.tex')))
         if my_file.is_file():
             load_tex(filepath.replace('.mod', ('_0' + str(i) + '_NM_MIRROR.tex')), 'test')
-    
-    
+
+
+def createMaterial(texture_name, normal_name = ""):
+    tex_material = bpy.data.materials.new(name="Tex_Material")
+    tex_material.use_nodes = True
+    principled_bsdf = tex_material.node_tree.nodes["Principled BSDF"]
+    texture = tex_material.node_tree.nodes.new("ShaderNodeTexImage")
+    texture.image = bpy.data.images[texture_name]
+    tex_material.node_tree.links.new(principled_bsdf.inputs["Base Color"], texture.outputs['Color'])
+    return tex_material
+
+
 from bpy_extras.io_utils import ImportHelper #needed to get the filepath correctly in Blender 4.4
 class IMPORT_OT_mod(bpy.types.Operator, ImportHelper):
     bl_idname = "import_scene.mod"
@@ -227,11 +242,11 @@ class IMPORT_OT_mod(bpy.types.Operator, ImportHelper):
 
     def execute(self, context):
         filepath = self.properties.filepath
-        load_mod(self.filepath, context)
+        multitex_loader(self.filepath)
+        load_mod(self.filepath, context, createMaterial("texture"))
         #load_tex(self.filepath.replace('.58A15856', '_BM.241F5DEB'), 'test') 
         #This line of code doesn't look like to load the files in the directory, maybe because I used a different arc unzipper? Should look into svan's arc.py file
         #I've made a little function that checks for all textures in the folder and loads them in the editor
-        multitex_loader(self.filepath)
         return {'FINISHED'}
 
     def invoke(self, context, event):
