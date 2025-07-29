@@ -15,8 +15,8 @@
 
 bl_info= {
     "name": "Import MH4U Models",
-    "author": "Seth VanHeulen",
-    "version": (1, 0),
+    "author": "Seth VanHeulen, edited by BlackHazard",
+    "version": (1, 3),
     "blender": (4, 4, 0),
     "location": "File > Import > Monster Hunter 4 Ultimate Model (.mod)",
     "description": "Imports a Monster Hunter 4 Ultimate model.",
@@ -120,10 +120,10 @@ def load_tex(filename, name):
     #unknown5 = (tex_header[3] >> 16) & 0x1fff
     offsets = array.array('I', tex.read(4 * mipmap_count))
     if pixel_type == 11:
-        image = bpy.data.images.new('texture', width, height)
+        image = bpy.data.images.new(name, width, height)
         decode_etc1(image, tex.read(width*height//2))
     elif pixel_type == 12:
-        image = bpy.data.images.new('texture', width, height, alpha=True) #specified alpha since compiler asked for it
+        image = bpy.data.images.new(name, width, height, alpha=True) #specified alpha since compiler asked for it
         decode_etc1(image, tex.read(width*height))
     tex.close()
 
@@ -208,20 +208,47 @@ def load_mod(filename, context, material_to_apply):
 #calls load_tex on all .tex files that are in the directory
 def multitex_loader(filepath):
     from pathlib import Path
-    #checks for textures in the folder
-    for i in range(4):
+    #opens the mod file to check for how many textures/materials are needed
+    mod = open(filepath, 'rb')
+    mod_header = struct.unpack('4s4H13I', mod.read(64))
+    if mod_header[0] != b'MOD\x00' or mod_header[1] != 0xe6:
+        mod.close()
+        return
+    #gets the number of "XfB"
+    n_textures = mod_header[4]
+    for i in range(n_textures):
         my_file = Path(filepath.replace('.mod', ('_0' + str(i) + '_BM.tex')))
         if my_file.is_file():
-            load_tex(filepath.replace('.mod', ('_0' + str(i) + '_BM.tex')), 'test')
+            #offset is given
+            mod.seek(mod_header[14] + 128*i)
+            name_bytes = struct.unpack('30s', mod.read(30))
+            name = ""
+            #gets from the read tuple the string
+            for byted in name_bytes:
+                name += byted.decode('utf-8')
+            
+            #if the xfb is body, we keep it for later. The body always gets the 01 texture
+            if "body" in name:
+                name = "Body"
+                load_tex(filepath.replace('.mod', ('_01' + '_BM.tex')), name)
+            #lazy solution to the fact that the body never is the first xfb mentioned...
+            elif i==1 and not "body" in name:
+                load_tex(filepath.replace('.mod', ('_0' + str(i + 1) + '_BM.tex')), name)
+                createMaterial(name)
+            else:
+                load_tex(filepath.replace('.mod', ('_0' + str(i) + '_BM.tex')), name)
+                createMaterial(name)
+    mod.close()
+    
     #checks for normals in the folder
-    for i in range(4):
+    for i in range(n_textures):
         my_file = Path(filepath.replace('.mod', ('_0' + str(i) + '_NM_MIRROR.tex')))
         if my_file.is_file():
-            load_tex(filepath.replace('.mod', ('_0' + str(i) + '_NM_MIRROR.tex')), 'test')
+            load_tex(filepath.replace('.mod', ('_0' + str(i) + '_NM_MIRROR.tex')), str(i) + 'NM_MIRROR')
 
 
 def createMaterial(texture_name, normal_name = ""):
-    tex_material = bpy.data.materials.new(name="Tex_Material")
+    tex_material = bpy.data.materials.new(name=(texture_name + "Material"))
     tex_material.use_nodes = True
     principled_bsdf = tex_material.node_tree.nodes["Principled BSDF"]
     texture = tex_material.node_tree.nodes.new("ShaderNodeTexImage")
@@ -243,7 +270,7 @@ class IMPORT_OT_mod(bpy.types.Operator, ImportHelper):
     def execute(self, context):
         filepath = self.properties.filepath
         multitex_loader(self.filepath)
-        load_mod(self.filepath, context, createMaterial("texture"))
+        load_mod(self.filepath, context, createMaterial("Body"))
         #load_tex(self.filepath.replace('.58A15856', '_BM.241F5DEB'), 'test') 
         #This line of code doesn't look like to load the files in the directory, maybe because I used a different arc unzipper? Should look into svan's arc.py file
         #I've made a little function that checks for all textures in the folder and loads them in the editor
