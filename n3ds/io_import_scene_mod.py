@@ -237,10 +237,10 @@ def multitex_loader(filepath, mod_type):
                 #lazy solution to the fact that the body never is the first xfb mentioned...
                 elif i==1 and not "body" in name:
                     load_tex(filepath.replace('.mod', ('_0' + str(i + 1) + '_BM.tex')), suffix + name)
-                    createMaterial(name)
+                    createMaterial(suffix+name)
                 else:
                     load_tex(filepath.replace('.mod', ('_0' + str(i) + '_BM.tex')), suffix + name)
-                    createMaterial(name)
+                    createMaterial(suffix+name)
         mod.close()
             #checks for normals in the folder
         for i in range(n_textures):
