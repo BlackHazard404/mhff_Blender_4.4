@@ -206,54 +206,66 @@ def load_mod(filename, context, material_to_apply):
     mod.close()
 
 #calls load_tex on all .tex files that are in the directory
-def multitex_loader(filepath):
+def multitex_loader(filepath, mod_type):
     from pathlib import Path
-    #opens the mod file to check for how many textures/materials are needed
-    mod = open(filepath, 'rb')
-    mod_header = struct.unpack('4s4H13I', mod.read(64))
-    if mod_header[0] != b'MOD\x00' or mod_header[1] != 0xe6:
-        mod.close()
-        return
-    #gets the number of "XfB"
-    n_textures = mod_header[4]
-    for i in range(n_textures):
-        my_file = Path(filepath.replace('.mod', ('_0' + str(i) + '_BM.tex')))
-        if my_file.is_file():
-            #offset is given
-            mod.seek(mod_header[14] + 128*i)
-            name_bytes = struct.unpack('30s', mod.read(30))
-            name = ""
-            #gets from the read tuple the string
-            for byted in name_bytes:
-                name += byted.decode('utf-8')
+    import os
+    suffix = os.path.splitext(os.path.basename(filepath))[0]
+    if(mod_type == 'Enemy'):
+        #opens the mod file to check for how many textures/materials are needed
+        mod = open(filepath, 'rb')
+        mod_header = struct.unpack('4s4H13I', mod.read(64))
+        if mod_header[0] != b'MOD\x00' or mod_header[1] != 0xe6:
+            mod.close()
+            return
+        #gets the number of "XfB"
+        n_textures = mod_header[4]
+        for i in range(n_textures):
+            my_file = Path(filepath.replace('.mod', ('_0' + str(i) + '_BM.tex')))
+            if my_file.is_file():
+                #offset is given
+                mod.seek(mod_header[14] + 128*i)
+                name_bytes = struct.unpack('30s', mod.read(30))
+                name = ""
+                #gets from the read tuple the string
+                for byted in name_bytes:
+                    name += byted.decode('utf-8')
             
-            #if the xfb is body, we keep it for later. The body always gets the 01 texture
-            if "body" in name:
-                name = "Body"
-                load_tex(filepath.replace('.mod', ('_01' + '_BM.tex')), name)
-            #lazy solution to the fact that the body never is the first xfb mentioned...
-            elif i==1 and not "body" in name:
-                load_tex(filepath.replace('.mod', ('_0' + str(i + 1) + '_BM.tex')), name)
-                createMaterial(name)
-            else:
-                load_tex(filepath.replace('.mod', ('_0' + str(i) + '_BM.tex')), name)
-                createMaterial(name)
-    mod.close()
-    
-    #checks for normals in the folder
-    for i in range(n_textures):
-        my_file = Path(filepath.replace('.mod', ('_0' + str(i) + '_NM_MIRROR.tex')))
-        if my_file.is_file():
-            load_tex(filepath.replace('.mod', ('_0' + str(i) + '_NM_MIRROR.tex')), str(i) + 'NM_MIRROR')
+                #if the xfb is body, we keep it for later. The body always gets the 01 texture
+                if "body" in name:
+                    name = "Body"
+                    load_tex(filepath.replace('.mod', ('_01' + '_BM.tex')), suffix + name)
+                #lazy solution to the fact that the body never is the first xfb mentioned...
+                elif i==1 and not "body" in name:
+                    load_tex(filepath.replace('.mod', ('_0' + str(i + 1) + '_BM.tex')), suffix + name)
+                    createMaterial(name)
+                else:
+                    load_tex(filepath.replace('.mod', ('_0' + str(i) + '_BM.tex')), suffix + name)
+                    createMaterial(name)
+        mod.close()
+            #checks for normals in the folder
+        for i in range(n_textures):
+            my_file = Path(filepath.replace('.mod', ('_0' + str(i) + '_NM_MIRROR.tex')))
+            if my_file.is_file():
+                load_tex(filepath.replace('.mod', ('_0' + str(i) + '_NM_MIRROR.tex')), str(i) + 'NM_MIRROR')
+    elif(mod_type == 'Armor'):
+        name = "Body"
+        load_tex(filepath.replace('.mod', ('_BM.tex')), suffix + name)
+    else:
+        print("Unsupported Operation")
 
 
 def createMaterial(texture_name, normal_name = ""):
     tex_material = bpy.data.materials.new(name=(texture_name + "Material"))
     tex_material.use_nodes = True
     principled_bsdf = tex_material.node_tree.nodes["Principled BSDF"]
-    texture = tex_material.node_tree.nodes.new("ShaderNodeTexImage")
-    texture.image = bpy.data.images[texture_name]
-    tex_material.node_tree.links.new(principled_bsdf.inputs["Base Color"], texture.outputs['Color'])
+    if texture_name:
+        texture = tex_material.node_tree.nodes.new("ShaderNodeTexImage")
+        try:
+            texture.image = bpy.data.images[texture_name]
+            tex_material.node_tree.links.new(principled_bsdf.inputs["Base Color"], texture.outputs['Color'])
+        except:
+            print("Texture " + texture_name + " not found.")
+    #if normal_name #missing normal support right now
     return tex_material
 
 
@@ -261,16 +273,31 @@ from bpy_extras.io_utils import ImportHelper #needed to get the filepath correct
 class IMPORT_OT_mod(bpy.types.Operator, ImportHelper):
     bl_idname = "import_scene.mod"
     bl_label = "Import MOD"
-    bl_description = "Import a Moster Hunter 4 Ultimate model"
-    bl_options = {'REGISTER', 'UNDO'}
-
+    bl_description = "Import a Monster Hunter 4 Ultimate model"
+    bl_options = {"REGISTER", "UNDO"}
+    texture_import: bpy.props.BoolProperty(
+                                name="Import textures", 
+                                default = True, 
+                                description="If checked, imports all textures of the .MOD file and applies some of them to the model")
+    mod_type: bpy.props.EnumProperty(
+                            items=[('Enemy', "Monster", "If the MOD File contains a monster"),
+                                   ('Armor', "Armor", "If the MOD File contains an armor"),
+                                   ('Other', "OTHER", "NOT SUPPORTED") ],
+                            name="MOD File Type",
+                            #default="Enemy",
+                            description="What the MOD file contains. Not needed if Import textures is not checked")
+    
     #filepath = bpy.props.StringProperty(name="File Path", description="Filepath used for importing the MOD file", maxlen=1024, default="") 
     #In Blender 4.4, this line of code later throws an error, saying that it's _PropertyDeferred and not string. Since it wasn't used anywhere else in the scope, I moved the variable in the execute function
 
     def execute(self, context):
+        import os
         filepath = self.properties.filepath
-        multitex_loader(self.filepath)
-        load_mod(self.filepath, context, createMaterial("Body"))
+        mrl_name = ""
+        if self.texture_import:
+            mrl_name = os.path.splitext(os.path.basename(filepath))[0] + "Body"
+            multitex_loader(self.filepath, self.mod_type)
+        load_mod(self.filepath, context, createMaterial(mrl_name))
         #load_tex(self.filepath.replace('.58A15856', '_BM.241F5DEB'), 'test') 
         #This line of code doesn't look like to load the files in the directory, maybe because I used a different arc unzipper? Should look into svan's arc.py file
         #I've made a little function that checks for all textures in the folder and loads them in the editor
